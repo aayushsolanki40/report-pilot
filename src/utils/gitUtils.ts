@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import simpleGit, { SimpleGit, LogResult } from 'simple-git';
 import dayjs from 'dayjs'; // Fixed import statement
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface CommitInfo {
     hash: string;
@@ -16,14 +18,35 @@ export interface DateRange {
 }
 
 /**
+ * Checks if a directory is a Git repository by looking for a .git folder
+ */
+export function isGitRepository(directoryPath: string): boolean {
+    try {
+        const gitDir = path.join(directoryPath, '.git');
+        return fs.existsSync(gitDir) && fs.statSync(gitDir).isDirectory();
+    } catch (error) {
+        console.error('Error checking if path is a Git repository:', error);
+        return false;
+    }
+}
+
+/**
  * Gets a Git instance for the current workspace
  */
 export function getGit(workspacePath?: string): SimpleGit | null {
     try {
         const path = workspacePath || getWorkspacePath();
         if (!path) {
+            vscode.window.showWarningMessage('No workspace folder found.');
             return null;
         }
+        
+        // Check if the workspace is a Git repository
+        if (!isGitRepository(path)) {
+            vscode.window.showInformationMessage(`No Git repository found in workspace: ${path}`);
+            return null;
+        }
+        
         return simpleGit(path);
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to initialize Git: ${error}`);
@@ -51,6 +74,7 @@ export async function getCommitsByDateRange(
     try {
         const git = getGit();
         if (!git) {
+            vscode.window.showInformationMessage('Could not initialize Git. Please check if this is a valid Git repository.');
             return [];
         }
 
@@ -58,22 +82,83 @@ export async function getCommitsByDateRange(
         const fromDate = dayjs(dateRange.from).format('YYYY-MM-DD');
         const toDate = dayjs(dateRange.to).format('YYYY-MM-DD');
         
-        // Build git options
-        const options: string[] = [
-            `--after="${fromDate}"`,
-            `--before="${toDate} 23:59:59"`,
-            '--pretty=format:{"hash":"%h","author":"%an <%ae>","date":"%ad","message":"%s"}',
-            '--date=iso'
-        ];
+        // Log the date range for debugging
+        console.log(`[Report Pilot] Fetching commits from ${fromDate} to ${toDate}`);
+        
+        try {
+            // First, check if the repository has any commits at all
+            const repoStatus = await git.status();
+            console.log(`[Report Pilot] Repository status: current branch: ${repoStatus.current}, tracking: ${repoStatus.tracking}`);
+        } catch (statusError) {
+            console.error('[Report Pilot] Error getting repository status:', statusError);
+        }
+        
+        // Try a simple log first to see if any commits exist
+        try {
+            const testLog = await git.log(['-n', '1']);
+            console.log(`[Report Pilot] Repository has commits: ${testLog.total > 0 ? 'Yes' : 'No'}`);
+            if (testLog.total > 0) {
+                console.log(`[Report Pilot] Most recent commit: ${testLog.latest?.hash} from ${testLog.latest?.date}`);
+            }
+        } catch (logError) {
+            console.error('[Report Pilot] Error checking for commits:', logError);
+        }
+        
+        // Build git options - use simpler format to avoid parsing errors
+        // Use wider date range options for testing
+        let options: string[];
+        
+        if (dateRange.from.getTime() === dateRange.to.getTime()) {
+            // If it's the same day, add a bit of padding
+            options = ['--all', '-n', '50'];
+            console.log('[Report Pilot] Using simplified options to retrieve recent commits');
+        } else {
+            options = [
+                `--after="${fromDate} 00:00:00"`,
+                `--before="${toDate} 23:59:59"`,
+                '--all'
+            ];
+        }
+        
+        // Format setting
+        // Use %B for full commit message instead of %s which might be getting truncated
+        const formatOption = '--pretty=format:{"hash":"%h","author":"%an <%ae>","date":"%ad","message":"%B"}';
+        options.push(formatOption);
+        options.push('--date=iso');
         
         if (author) {
             options.push(`--author="${author}"`);
         }
 
         // Execute git log command
-        const result = await git.log(options);
-        return parseGitLog(result);
+        console.log(`[Report Pilot] Running git log with options: ${options.join(' ')}`);
+        
+        try {
+            const result = await git.log(options);
+            const commits = parseGitLog(result);
+            console.log(`[Report Pilot] Found ${commits.length} commits with the specified options`);
+            
+            // If no commits found with the date range, try getting a few recent ones
+            if (commits.length === 0) {
+                console.log('[Report Pilot] No commits found in date range. Trying to get the most recent commits...');
+                const recentResult = await git.log(['-n', '10', '--pretty=format:{"hash":"%h","author":"%an <%ae>","date":"%ad","message":"%s"}', '--date=iso']);
+                const recentCommits = parseGitLog(recentResult);
+                console.log(`[Report Pilot] Found ${recentCommits.length} recent commits`);
+                
+                if (recentCommits.length > 0) {
+                    // Show a message to the user
+                    vscode.window.showInformationMessage('No commits found in the selected time period. Showing the most recent commits instead.');
+                    return recentCommits;
+                }
+            }
+            
+            return commits;
+        } catch (error) {
+            console.error('[Report Pilot] Error executing git log:', error);
+            throw error;
+        }
     } catch (error) {
+        console.error('[Report Pilot] Error in getCommitsByDateRange:', error);
         vscode.window.showErrorMessage(`Failed to get commits: ${error}`);
         return [];
     }
@@ -98,16 +183,46 @@ export async function getTodaysCommits(author?: string): Promise<CommitInfo[]> {
 function parseGitLog(logResult: LogResult): CommitInfo[] {
     const commits: CommitInfo[] = [];
     
-    if (logResult && logResult.all) {
+    if (logResult && logResult.all && logResult.all.length > 0) {
+        console.log(`[Report Pilot] Parsing ${logResult.all.length} log entries`);
+        
         for (const commit of logResult.all) {
-            commits.push({
-                hash: commit.hash,
-                message: commit.message,
-                author: commit.author_name,
-                date: new Date(commit.date),
-                files: [] // Simple-git doesn't include files in the default log format, so we'll use an empty array
-            });
+            try {
+                // Debug the date format
+                console.log(`[Report Pilot] Raw date value: ${commit.date}`);
+                
+                // Ensure date is properly parsed using dayjs
+                let commitDate;
+                try {
+                    commitDate = dayjs(commit.date).toDate();
+                    // Validate date
+                    if (isNaN(commitDate.getTime())) {
+                        console.log(`[Report Pilot] Invalid date parsed: ${commit.date}`);
+                        // Fallback to current date if parsing fails
+                        commitDate = new Date();
+                    }
+                } catch (dateError) {
+                    console.error(`[Report Pilot] Error parsing date: ${commit.date}`, dateError);
+                    commitDate = new Date(); // Default to current date
+                }
+                
+                commits.push({
+                    hash: commit.hash,
+                    message: commit.message || '[No message]',
+                    author: commit.author_name || 'Unknown',
+                    date: commitDate,
+                    files: []
+                });
+            } catch (parseError) {
+                console.error('[Report Pilot] Error parsing commit:', parseError, commit);
+            }
         }
+        
+        console.log(`[Report Pilot] Successfully parsed ${commits.length} commits`);
+    } else {
+        console.log('[Report Pilot] No log entries to parse in the result');
+        // Debug log result structure
+        console.log('[Report Pilot] LogResult structure:', JSON.stringify(logResult, null, 2));
     }
     
     return commits;

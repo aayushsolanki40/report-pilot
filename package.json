@@ -35,13 +35,15 @@
     "commands": [
       {
         "command": "report-pilot.showCommits",
-        "title": "Show Recent Commits",
-        "category": "Report Pilot"
+        "title": "Select Time Period",
+        "category": "Report Pilot",
+        "icon": "$(calendar)"
       },
       {
         "command": "report-pilot.generateReport",
         "title": "Generate Work Report",
-        "category": "Report Pilot"
+        "category": "Report Pilot",
+        "icon": "$(note)"
       },
       {
         "command": "report-pilot.copyReport",
@@ -82,6 +84,11 @@
         "contents": "No Git repository found. Open a folder with a Git repository to see your commits."
       },
       {
+        "view": "commitExplorer",
+        "contents": "To change the time period for commits:\n[Select Time Period](command:report-pilot.showCommits)\nClick the calendar icon in the view title.",
+        "when": "view == commitExplorer && gitOpenRepositoryCount != 0"
+      },
+      {
         "view": "reportView",
         "contents": "Generate a report from your commits to see it here."
       }
@@ -89,9 +96,20 @@
     "menus": {
       "view/title": [
         {
+          "command": "report-pilot.showCommits",
+          "when": "view == commitExplorer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "report-pilot.generateReport",
+          "when": "view == commitExplorer",
+          "group": "navigation@2",
+          "icon": "$(note)"
+        },
+        {
           "command": "report-pilot.refreshCommits",
           "when": "view == commitExplorer",
-          "group": "navigation"
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [

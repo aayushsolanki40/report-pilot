@@ -7,7 +7,7 @@ suite('Report Pilot Extension Test Suite', () => {
 	vscode.window.showInformationMessage('Starting Report Pilot tests');
 "@vscode/test-electron";
 	test('Extension should be present', () => {
-		assert.ok(vscode.extensions.getExtension('your-name.report-pilot'));
+		assert.ok(vscode.extensions.getExtension('aayush-solanki.report-pilot'));
 	});
 
 	test('Commands should be registered', async () => {
