@@ -2,58 +2,105 @@
 
 Report Pilot is a VS Code extension that helps developers generate work reports based on Git commits. It makes it easy to create summaries of your work over a specific time period, which can be useful for daily standups, weekly reports, or project status updates.
 
-## Features
+![Report Pilot Banner](resources/banner.png)
 
-- **View Git Commits**: Display a structured view of Git commits from your current workspace
-- **Filter Commits**: Filter commits by author and time range
-- **Generate Reports**: Automatically generate work reports from your commits
-- **Group Commits**: Group commits by common patterns (features, bug fixes, etc.)
-- **Copy Reports**: Easily copy generated reports to the clipboard
+## Key Features
 
-## Getting Started
+- **Git Commit Tracking**: Access and view Git commits for your current workspace
+- **Flexible Time Filtering**: Filter commits by specific time periods (today, yesterday, this week, etc.)
+- **Smart Report Generation**: Automatically generate formatted work reports from commits
+- **Work Summarization**: Get intelligent summaries that categorize your work by patterns
+- **One-Click Sharing**: Copy reports to clipboard for easy sharing via email or chat
 
-1. Install the extension from the VS Code Marketplace
-2. Open a project with Git history
-3. Click on the Report Pilot icon in the Activity Bar
-4. Use "Show Commits" to fetch your recent Git commits
-5. Use "Generate Report" to create a work report based on these commits
+## Installation
+
+You can install this extension in several ways:
+
+1. **VS Code Marketplace**:
+   - Search for "Report Pilot" in the Extensions view
+   - Click Install
+
+2. **Manual Installation**:
+   - Download the `.vsix` file from the [releases page](https://github.com/your-username/report-pilot/releases)
+   - Run `code --install-extension report-pilot-x.x.x.vsix`
+
+3. **Build from Source**:
+   - Clone this repository
+   - Run `npm install`
+   - Run `npm run build`
+   - Run `npm run package`
+   - Install the generated VSIX file
+
+## How to Use
+
+1. **Open a Git Repository**: Launch VS Code with a folder that contains a Git repository.
+
+2. **Access Report Pilot**: Click on the Report Pilot icon in the Activity Bar (side bar).
+
+3. **View and Filter Commits**:
+   - The "Commits" view displays your recent Git commits.
+   - Use the dropdown or command palette to filter by time period.
+   - Commits are automatically grouped by date.
+
+4. **Generate a Work Report**:
+   - Click "Generate Work Report" in the view or command palette.
+   - The report will appear in the "Work Report" view.
+
+5. **Customize and Share**:
+   - View the report summary and details.
+   - Copy the report to clipboard with a single click.
+   - Paste into emails, documents, or chat applications.
 
 ## Commands
 
-This extension provides the following commands:
-
-- `Report Pilot: Show Commits`: Fetches and displays Git commits for your workspace
-- `Report Pilot: Generate Work Report`: Creates a formatted work report from the fetched commits
+- `Report Pilot: Show Recent Commits` - Display commits for a selected time period
+- `Report Pilot: Generate Work Report` - Create a report from visible commits
+- `Report Pilot: Copy Report to Clipboard` - Copy the current report
+- `Report Pilot: Refresh Commits` - Refresh the commit list
 
 ## Settings
 
 This extension contributes the following settings:
 
-- `reportPilot.enable`: Enable/disable the Report Pilot extension
-- `reportPilot.defaultDays`: Default number of days to include in the report (default: 1)
-- `reportPilot.groupCommits`: Group commits by feature/task in the report (default: true)
+- `reportPilot.dateFormat`: Format for displaying dates in reports (default: "YYYY-MM-DD")
+- `reportPilot.defaultTimespan`: Default time period for viewing commits (default: "today")
 
-## Requirements
+## Tips for Better Results
 
-- Git must be installed and accessible in your PATH
-- Your workspace must be a Git repository
+For best results with Report Pilot:
 
-## Tips for Best Results
+1. **Use consistent commit message formats**: Ideally following conventional commits (feat:, fix:, docs:)
+2. **Include ticket/issue numbers**: This helps with traceability in your reports
+3. **Write descriptive commit messages**: This makes your reports more meaningful
 
-- Use consistent commit message formats to improve the automatic grouping
-- Consider using conventional commit format (e.g., feat:, fix:, docs:) for better report organization
+## Development
 
-## Release Notes
+### Requirements
 
-### 0.0.1
+- Node.js
+- Git
+- VS Code
 
-- Initial release of Report Pilot
-- Basic commit viewing and report generation
+### Building and Testing
 
-## Contributing
+1. Clone the repository
+2. Run `npm install` to install dependencies
+3. Run `npm run build` to compile
+4. Run `npm run test` to run tests
+5. Run `npm run package` to create a VSIX package
 
-Pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.
+### Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-[MIT](LICENSE)
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+If you encounter any issues or have suggestions, please file an issue in the [GitHub repository](https://github.com/your-username/report-pilot/issues).
+
+---
+
+**Enjoy more productive standups with Report Pilot!**
