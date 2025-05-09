@@ -1,0 +1,50 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "npm",
+            "args": [
+                "run",
+                "build"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$tsc"
+            ],
+            "detail": "Build the extension using npm."
+        },
+        {
+            "label": "lint",
+            "type": "shell",
+            "command": "npm",
+            "args": [
+                "run",
+                "lint"
+            ],
+            "group": "test",
+            "problemMatcher": [
+                "$eslint-stylish"
+            ],
+            "detail": "Lint the extension code."
+        },
+        {
+            "label": "test",
+            "type": "shell",
+            "command": "npm",
+            "args": [
+                "run",
+                "test"
+            ],
+            "group": "test",
+            "problemMatcher": [
+                "$mocha"
+            ],
+            "detail": "Run the extension tests."
+        }
+    ]
+}
