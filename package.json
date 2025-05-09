@@ -1,0 +1,130 @@
+{
+  "name": "report-pilot",
+  "displayName": "Report Pilot",
+  "description": "Generate work reports from Git commits in your project",
+  "version": "0.0.1",
+  "publisher": "your-name",
+  "engines": {
+    "vscode": "^1.50.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:report-pilot.showCommits",
+    "onCommand:report-pilot.generateReport",
+    "onView:commitExplorer"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "vscode:prepublish": "webpack --mode production",
+    "compile": "tsc -p ./tsconfig.json",
+    "watch": "tsc -watch -p ./tsconfig.json",
+    "postinstall": "node ./node_modules/vscode/bin/install",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js",
+    "build": "webpack --mode development"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "report-pilot.showCommits",
+        "title": "Show Recent Commits",
+        "category": "Report Pilot"
+      },
+      {
+        "command": "report-pilot.generateReport",
+        "title": "Generate Work Report",
+        "category": "Report Pilot"
+      },
+      {
+        "command": "report-pilot.copyReport",
+        "title": "Copy Report to Clipboard",
+        "category": "Report Pilot"
+      },
+      {
+        "command": "report-pilot.refreshCommits",
+        "title": "Refresh Commits",
+        "category": "Report Pilot",
+        "icon": "$(refresh)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "report-pilot",
+          "title": "Report Pilot",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "report-pilot": [
+        {
+          "id": "commitExplorer",
+          "name": "Commits"
+        },
+        {
+          "id": "reportView",
+          "name": "Work Report"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "commitExplorer",
+        "contents": "No Git repository found. Open a folder with a Git repository to see your commits."
+      },
+      {
+        "view": "reportView",
+        "contents": "Generate a report from your commits to see it here."
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "report-pilot.refreshCommits",
+          "when": "view == commitExplorer",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "report-pilot.copyReport",
+          "when": "view == reportView",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Report Pilot",
+      "properties": {
+        "reportPilot.dateFormat": {
+          "type": "string",
+          "default": "YYYY-MM-DD",
+          "description": "Format for displaying dates"
+        },
+        "reportPilot.defaultTimespan": {
+          "type": "string",
+          "enum": ["today", "yesterday", "thisWeek", "lastWeek", "custom"],
+          "default": "today",
+          "description": "Default timespan for commit analysis"
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "typescript": "^4.0.0",
+    "webpack": "^5.0.0",
+    "webpack-cli": "^4.0.0",
+    "vscode": "^1.1.36",
+    "@types/node": "^14.0.0",
+    "eslint": "^7.0.0",
+    "@typescript-eslint/eslint-plugin": "^4.0.0",
+    "@typescript-eslint/parser": "^4.0.0"
+  },
+  "dependencies": {
+    "dayjs": "^1.10.7",
+    "simple-git": "^3.0.0"
+  }
+}
