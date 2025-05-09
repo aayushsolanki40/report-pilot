@@ -1,4 +1,8 @@
-<svg width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- Simple blue background -->
   <rect width="24" height="24" rx="4" fill="#1e88e5"/>
-  <path d="M18 8h-3V6.21c0-.45-.54-.67-.85-.35l-3.8 3.79c-.2.2-.2.51 0 .71l3.8 3.79c.31.31.85.09.85-.35V12h3c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-11 5H4c-.55 0-1-.45-1-1V9c0-.55.45-1 1-1h3V6.21c0-.45.54-.67.85-.35l3.8 3.79c.2.2.2.51 0 .71l-3.8 3.79c-.31.31-.85.09-.85-.35V13z" fill="white"/>
+  <!-- Document icon in white -->
+  <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z" fill="white"/>
+  <!-- Small lines representing text -->
+  <path d="M9 13h6v1H9v-1zm0 2h6v1H9v-1zm0 2h6v1H9v-1z" fill="white"/>
 </svg>
