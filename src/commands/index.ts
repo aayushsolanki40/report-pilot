@@ -39,14 +39,32 @@ export function registerCommands(context: vscode.ExtensionContext): void {
                 return;
             }
             
-            reportViewProvider.generateReport(commits);
-            vscode.window.showInformationMessage('Work report generated!');
+            vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: "Generating AI Work Report",
+                cancellable: false
+            }, async (progress) => {
+                progress.report({ message: "Analyzing commits..." });
+                
+                // Use the AI-powered report generator
+                await reportViewProvider.generateAIReport(commits);
+                vscode.window.showInformationMessage('AI-powered work report generated!');
+            });
         },
         'report-pilot.copyReport': async () => {
             await reportViewProvider.copyReportToClipboard();
         },
         'report-pilot.viewReportInEditor': async () => {
             await reportViewProvider.showReportPreview();
+        },
+        'report-pilot.viewReportSection': async (content: string) => {
+            // Create a temporary document and show it
+            const doc = await vscode.workspace.openTextDocument({
+                content: content,
+                language: 'markdown'
+            });
+            
+            await vscode.window.showTextDocument(doc, { preview: true });
         }
     };
     

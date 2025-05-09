@@ -82,55 +82,27 @@ export async function getCommitsByDateRange(
         const fromDate = dayjs(dateRange.from).format('YYYY-MM-DD');
         const toDate = dayjs(dateRange.to).format('YYYY-MM-DD');
         
-        // Log the date range for debugging
         console.log(`[Report Pilot] Fetching commits from ${fromDate} to ${toDate}`);
         
-        try {
-            // First, check if the repository has any commits at all
-            const repoStatus = await git.status();
-            console.log(`[Report Pilot] Repository status: current branch: ${repoStatus.current}, tracking: ${repoStatus.tracking}`);
-        } catch (statusError) {
-            console.error('[Report Pilot] Error getting repository status:', statusError);
-        }
+        // Build git options - simplified approach
+        let options: string[] = [];
         
-        // Try a simple log first to see if any commits exist
-        try {
-            const testLog = await git.log(['-n', '1']);
-            console.log(`[Report Pilot] Repository has commits: ${testLog.total > 0 ? 'Yes' : 'No'}`);
-            if (testLog.total > 0) {
-                console.log(`[Report Pilot] Most recent commit: ${testLog.latest?.hash} from ${testLog.latest?.date}`);
-            }
-        } catch (logError) {
-            console.error('[Report Pilot] Error checking for commits:', logError);
-        }
+        // Add date range - using simpler syntax that works more reliably
+        options.push(`--since="${fromDate}"`);
+        options.push(`--until="${toDate} 23:59:59"`);
         
-        // Build git options - use simpler format to avoid parsing errors
-        // Use wider date range options for testing
-        let options: string[];
+        // Limit results but ensure we get enough data
+        options.push('-n', '100');
         
-        if (dateRange.from.getTime() === dateRange.to.getTime()) {
-            // If it's the same day, add a bit of padding
-            options = ['--all', '-n', '50'];
-            console.log('[Report Pilot] Using simplified options to retrieve recent commits');
-        } else {
-            options = [
-                `--after="${fromDate} 00:00:00"`,
-                `--before="${toDate} 23:59:59"`,
-                '--all'
-            ];
-        }
-        
-        // Format setting
-        // Use %B for full commit message instead of %s which might be getting truncated
-        const formatOption = '--pretty=format:{"hash":"%h","author":"%an <%ae>","date":"%ad","message":"%B"}';
-        options.push(formatOption);
-        options.push('--date=iso');
-        
+        // Add author filter if specified
         if (author) {
             options.push(`--author="${author}"`);
         }
-
-        // Execute git log command
+        
+        // Format setting - using %B for full message
+        options.push('--date=iso');
+        options.push('--pretty=format:{"hash":"%h","author":"%an <%ae>","date":"%ad","message":"%s"}');
+        
         console.log(`[Report Pilot] Running git log with options: ${options.join(' ')}`);
         
         try {
@@ -138,17 +110,13 @@ export async function getCommitsByDateRange(
             const commits = parseGitLog(result);
             console.log(`[Report Pilot] Found ${commits.length} commits with the specified options`);
             
-            // If no commits found with the date range, try getting a few recent ones
+            // If no commits found with the date range
             if (commits.length === 0) {
-                console.log('[Report Pilot] No commits found in date range. Trying to get the most recent commits...');
-                const recentResult = await git.log(['-n', '10', '--pretty=format:{"hash":"%h","author":"%an <%ae>","date":"%ad","message":"%s"}', '--date=iso']);
-                const recentCommits = parseGitLog(recentResult);
-                console.log(`[Report Pilot] Found ${recentCommits.length} recent commits`);
+                console.log('[Report Pilot] No commits found in date range.');
                 
-                if (recentCommits.length > 0) {
-                    // Show a message to the user
-                    vscode.window.showInformationMessage('No commits found in the selected time period. Showing the most recent commits instead.');
-                    return recentCommits;
+                // Only for "today" or "yesterday" show fallback message
+                if (dayjs(dateRange.to).diff(dayjs(dateRange.from), 'day') <= 1) {
+                    vscode.window.showInformationMessage(`No commits found for ${dayjs(dateRange.from).format('YYYY-MM-DD')}.`);
                 }
             }
             
@@ -246,23 +214,30 @@ export function getDateRange(period: 'today' | 'yesterday' | 'thisWeek' | 'lastW
             yesterday.setDate(yesterday.getDate() - 1);
             return {
                 from: yesterday,
-                to: new Date(today.getTime() - 1) // End of yesterday
+                to: yesterday // Use the same day for "yesterday" for clearer filtering
             };
         }
         case 'thisWeek': {
+            // Get first day of current week (Sunday = 0)
             const startOfWeek = new Date(today);
-            startOfWeek.setDate(today.getDate() - today.getDay());
+            const currentDay = today.getDay(); // 0 for Sunday, 1 for Monday, etc.
+            startOfWeek.setDate(today.getDate() - currentDay); // Go back to Sunday
             return {
                 from: startOfWeek,
                 to: now
             };
         }
         case 'lastWeek': {
+            // Last week = 7-13 days ago
             const startOfLastWeek = new Date(today);
-            startOfLastWeek.setDate(today.getDate() - today.getDay() - 7);
-            const endOfLastWeek = new Date(today);
-            endOfLastWeek.setDate(today.getDate() - today.getDay() - 1);
+            const currentDay = today.getDay();
+            // Go back to Sunday of last week
+            startOfLastWeek.setDate(today.getDate() - currentDay - 7);
+            
+            const endOfLastWeek = new Date(startOfLastWeek);
+            endOfLastWeek.setDate(startOfLastWeek.getDate() + 6); // Saturday of last week
             endOfLastWeek.setHours(23, 59, 59, 999);
+            
             return {
                 from: startOfLastWeek,
                 to: endOfLastWeek
@@ -340,4 +315,323 @@ export function summarizeCommits(commits: CommitInfo[]): string {
     }
     
     return report;
+}
+
+/**
+ * Generate an AI-enhanced work report based on commit data
+ * This function uses more advanced techniques to categorize and summarize work
+ */
+export function generateAIWorkReport(commits: CommitInfo[]): string {
+    if (commits.length === 0) {
+        return 'No commits found in the selected time period.';
+    }
+
+    const dateFormat = vscode.workspace.getConfiguration('reportPilot').get('dateFormat', 'YYYY-MM-DD');
+    
+    // Group commits by day
+    const commitsByDay = new Map<string, CommitInfo[]>();
+    
+    for (const commit of commits) {
+        const dayKey = dayjs(commit.date).format(dateFormat);
+        if (!commitsByDay.has(dayKey)) {
+            commitsByDay.set(dayKey, []);
+        }
+        commitsByDay.get(dayKey)?.push(commit);
+    }
+    
+    // Start the report with a title
+    let report = '# Work Report\n\n';
+    
+    // 1. Add an executive summary section that highlights key accomplishments
+    report += '## Executive Summary\n\n';
+    
+    // Analyze commit messages to identify key themes
+    const keywords = analyzeCommitKeywords(commits);
+    const features = identifyFeatures(commits);
+    const bugFixes = identifyBugFixes(commits);
+    
+    if (features.length > 0) {
+        report += '### Key Features Implemented:\n';
+        features.forEach(feature => {
+            report += `- ${feature}\n`;
+        });
+        report += '\n';
+    }
+    
+    if (bugFixes.length > 0) {
+        report += '### Bug Fixes:\n';
+        bugFixes.forEach(bugFix => {
+            report += `- ${bugFix}\n`;
+        });
+        report += '\n';
+    }
+
+    // 2. Add a work breakdown by day section
+    report += '## Daily Work Breakdown\n\n';
+    
+    // Sort days chronologically
+    const sortedDays = Array.from(commitsByDay.keys()).sort();
+    for (const day of sortedDays) {
+        const dayCommits = commitsByDay.get(day) || [];
+        report += `### ${day}\n\n`;
+        
+        // Group commits by type (feature, fix, docs, etc.)
+        const commitsByType = categorizeCommitsByType(dayCommits);
+        
+        for (const [type, typeCommits] of Object.entries(commitsByType)) {
+            if (typeCommits.length > 0) {
+                report += `**${capitalizeFirstLetter(type)}:**\n`;
+                typeCommits.forEach(commit => {
+                    // Clean up the commit message
+                    const cleanMessage = cleanCommitMessage(commit.message);
+                    report += `- ${cleanMessage} (${commit.hash})\n`;
+                });
+                report += '\n';
+            }
+        }
+    }
+    
+    // 3. Add metrics and statistics
+    report += '## Work Metrics\n\n';
+    report += `- **Total commits:** ${commits.length}\n`;
+    
+    // Calculate commits per day
+    const daysWorked = commitsByDay.size;
+    const commitsPerDay = daysWorked > 0 ? (commits.length / daysWorked).toFixed(1) : '0';
+    report += `- **Days worked:** ${daysWorked}\n`;
+    report += `- **Commits per day:** ${commitsPerDay}\n`;
+    
+    // Add time period
+    if (commits.length > 0) {
+        // Sort commits chronologically
+        const sortedCommits = [...commits].sort((a, b) => a.date.getTime() - b.date.getTime());
+        const startDate = dayjs(sortedCommits[0].date).format(dateFormat);
+        const endDate = dayjs(sortedCommits[sortedCommits.length - 1].date).format(dateFormat);
+        report += `- **Time period:** ${startDate} to ${endDate}\n\n`;
+    }
+    
+    // 4. Add work focus areas from keyword analysis
+    if (Object.keys(keywords).length > 0) {
+        report += '## Focus Areas\n\n';
+        
+        // Sort keywords by frequency
+        const sortedKeywords = Object.entries(keywords)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5); // Take top 5
+            
+        sortedKeywords.forEach(([keyword, count]) => {
+            report += `- **${keyword}:** ${count} occurrences\n`;
+        });
+        report += '\n';
+    }
+    
+    return report;
+}
+
+/**
+ * Analyzes commit messages to extract meaningful keywords
+ */
+function analyzeCommitKeywords(commits: CommitInfo[]): Record<string, number> {
+    const keywords: Record<string, number> = {};
+    const stopwords = ['the', 'a', 'an', 'and', 'in', 'on', 'at', 'to', 'for', 'with', 'by'];
+    
+    for (const commit of commits) {
+        // Extract words from commit message
+        const words = commit.message
+            .toLowerCase()
+            .replace(/[^\w\s]/g, ' ') // Replace punctuation with spaces
+            .split(/\s+/) // Split on whitespace
+            .filter(word => word.length > 3 && !stopwords.includes(word)); // Filter out short words and stopwords
+            
+        // Count occurrences
+        words.forEach(word => {
+            if (!keywords[word]) {
+                keywords[word] = 0;
+            }
+            keywords[word]++;
+        });
+    }
+    
+    return keywords;
+}
+
+/**
+ * Identify feature implementations from commits
+ */
+function identifyFeatures(commits: CommitInfo[]): string[] {
+    const features: string[] = [];
+    
+    // Look for feature-related commits
+    for (const commit of commits) {
+        const message = commit.message.toLowerCase();
+        
+        // Check for feature patterns
+        if (
+            message.startsWith('feat') || 
+            message.includes('implement') || 
+            message.includes('add') ||
+            message.includes('new') ||
+            message.includes('feature')
+        ) {
+            // Clean up and extract the feature description
+            let feature = commit.message
+                .replace(/^feat(\(.*?\))?:?\s*/i, '') // Remove conventional commit prefix
+                .replace(/^add\s*/i, '')  // Remove "add" prefix
+                .replace(/^implement\s*/i, '') // Remove "implement" prefix
+                .trim();
+                
+            // Capitalize first letter
+            feature = capitalizeFirstLetter(feature);
+            
+            if (feature.length > 0) {
+                features.push(feature);
+            }
+        }
+    }
+    
+    return features;
+}
+
+/**
+ * Identify bug fixes from commits
+ */
+function identifyBugFixes(commits: CommitInfo[]): string[] {
+    const fixes: string[] = [];
+    
+    // Look for fix-related commits
+    for (const commit of commits) {
+        const message = commit.message.toLowerCase();
+        
+        // Check for fix patterns
+        if (
+            message.startsWith('fix') || 
+            message.includes('bug') || 
+            message.includes('issue') ||
+            message.includes('error') ||
+            message.includes('problem') ||
+            message.includes('resolve')
+        ) {
+            // Clean up and extract the fix description
+            let fix = commit.message
+                .replace(/^fix(\(.*?\))?:?\s*/i, '') // Remove conventional commit prefix
+                .replace(/^fixed\s*/i, '') // Remove "fixed" prefix
+                .trim();
+                
+            // Capitalize first letter
+            fix = capitalizeFirstLetter(fix);
+            
+            if (fix.length > 0) {
+                fixes.push(fix);
+            }
+        }
+    }
+    
+    return fixes;
+}
+
+/**
+ * Categorize commits by their conventional commit type
+ */
+function categorizeCommitsByType(commits: CommitInfo[]): Record<string, CommitInfo[]> {
+    const categories: Record<string, CommitInfo[]> = {
+        'feature': [],
+        'fix': [],
+        'docs': [],
+        'refactor': [],
+        'test': [],
+        'chore': [],
+        'other': []
+    };
+    
+    for (const commit of commits) {
+        const message = commit.message.toLowerCase();
+        
+        // Check for conventional commit prefixes
+        if (message.startsWith('feat')) {
+            categories['feature'].push(commit);
+        } else if (message.startsWith('fix')) {
+            categories['fix'].push(commit);
+        } else if (message.startsWith('docs')) {
+            categories['docs'].push(commit);
+        } else if (message.startsWith('refactor')) {
+            categories['refactor'].push(commit);
+        } else if (message.startsWith('test')) {
+            categories['test'].push(commit);
+        } else if (message.startsWith('chore')) {
+            categories['chore'].push(commit);
+        } else {
+            // Content-based categorization for non-conventional commits
+            if (
+                message.includes('implement') || 
+                message.includes('add') || 
+                message.includes('new') || 
+                message.includes('feature')
+            ) {
+                categories['feature'].push(commit);
+            } else if (
+                message.includes('fix') || 
+                message.includes('bug') || 
+                message.includes('issue') ||
+                message.includes('error')
+            ) {
+                categories['fix'].push(commit);
+            } else if (
+                message.includes('document') || 
+                message.includes('readme') || 
+                message.includes('comment')
+            ) {
+                categories['docs'].push(commit);
+            } else if (
+                message.includes('refactor') || 
+                message.includes('restructure') || 
+                message.includes('improve') ||
+                message.includes('clean')
+            ) {
+                categories['refactor'].push(commit);
+            } else if (
+                message.includes('test') || 
+                message.includes('spec') || 
+                message.includes('assert')
+            ) {
+                categories['test'].push(commit);
+            } else if (
+                message.includes('config') || 
+                message.includes('version') || 
+                message.includes('upgrade') ||
+                message.includes('bump') ||
+                message.includes('merge')
+            ) {
+                categories['chore'].push(commit);
+            } else {
+                categories['other'].push(commit);
+            }
+        }
+    }
+    
+    // Filter out empty categories (without using Object.fromEntries which requires ES2019+)
+    const result: Record<string, CommitInfo[]> = {};
+    for (const [type, typeCommits] of Object.entries(categories)) {
+        if (typeCommits.length > 0) {
+            result[type] = typeCommits;
+        }
+    }
+    
+    return result;
+}
+
+/**
+ * Clean up commit messages for better readability
+ */
+function cleanCommitMessage(message: string): string {
+    return message
+        .replace(/^(feat|fix|docs|refactor|test|chore)(\(.*?\))?:?\s*/i, '')
+        .trim();
+}
+
+/**
+ * Capitalize the first letter of a string
+ */
+function capitalizeFirstLetter(str: string): string {
+    if (!str || str.length === 0) return str;
+    return str.charAt(0).toUpperCase() + str.slice(1);
 }

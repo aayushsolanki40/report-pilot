@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import dayjs from 'dayjs';
-import { CommitInfo, summarizeCommits } from '../utils/gitUtils';
+import { CommitInfo, summarizeCommits, generateAIWorkReport } from '../utils/gitUtils';
 
 /**
  * Tree item representing a report section in the report view
@@ -18,6 +18,17 @@ export class ReportSectionTreeItem extends vscode.TreeItem {
         
         // Add document icon
         this.iconPath = new vscode.ThemeIcon('notebook');
+        
+        // Add a command to view the content when clicked
+        this.command = {
+            command: 'report-pilot.viewReportSection',
+            title: 'View Report Section',
+            arguments: [this.content]
+        };
+        
+        // Add a description to show a preview
+        this.description = content.split('\n')[0].substring(0, 30) + 
+            (content.split('\n')[0].length > 30 ? '...' : '');
         
         // Enable context menu actions
         this.contextValue = 'reportSection';
@@ -49,6 +60,26 @@ export class ReportViewProvider implements vscode.TreeDataProvider<vscode.TreeIt
         // Notify the tree view to refresh
         this._onDidChangeTreeData.fire(undefined);
     }
+
+    /**
+     * Generate an AI-powered report from commits
+     * This uses advanced analysis to categorize and summarize work
+     */
+    public async generateAIReport(commits: CommitInfo[]): Promise<void> {
+        try {
+            // Generate the AI-enhanced report text
+            this.report = generateAIWorkReport(commits);
+            
+            // Parse the report into sections based on markdown headings
+            this.parseReportSections();
+            
+            // Notify the tree view to refresh
+            this._onDidChangeTreeData.fire(undefined);
+        } catch (error) {
+            vscode.window.showErrorMessage(`Error generating AI report: ${error}`);
+            console.error('Error in generateAIReport:', error);
+        }
+    }
     
     /**
      * Parse the report text into sections based on markdown headings
@@ -56,19 +87,34 @@ export class ReportViewProvider implements vscode.TreeDataProvider<vscode.TreeIt
     private parseReportSections(): void {
         this.reportSections = [];
         
-        if (!this.report) {
+        if (!this.report || this.report.trim() === '') {
+            console.log("[Report Pilot] No report content to parse");
             return;
         }
+        
+        console.log("[Report Pilot] Parsing report content");
+        
+        // Add overall summary item first
+        this.reportSections.push(
+            new ReportSectionTreeItem(
+                'Full Report',
+                this.report,
+                vscode.TreeItemCollapsibleState.Collapsed
+            )
+        );
         
         // Split the report by heading lines (##)
         const lines = this.report.split('\n');
         let currentSection = '';
         let currentContent = '';
+        let sectionStartIndex = -1;
         
-        for (const line of lines) {
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
             if (line.startsWith('## ')) {
                 // If we were already processing a section, save it
-                if (currentSection) {
+                if (currentSection && currentContent) {
                     this.reportSections.push(
                         new ReportSectionTreeItem(
                             currentSection,
@@ -80,15 +126,16 @@ export class ReportViewProvider implements vscode.TreeDataProvider<vscode.TreeIt
                 
                 // Start a new section
                 currentSection = line.substring(3).trim();
+                sectionStartIndex = i;
                 currentContent = line + '\n';
-            } else {
+            } else if (currentSection) {
                 // Add line to current section content
                 currentContent += line + '\n';
             }
         }
         
         // Add the last section if there is one
-        if (currentSection) {
+        if (currentSection && currentContent) {
             this.reportSections.push(
                 new ReportSectionTreeItem(
                     currentSection,
@@ -98,12 +145,72 @@ export class ReportViewProvider implements vscode.TreeDataProvider<vscode.TreeIt
             );
         }
         
-        // Add overall summary item
-        if (this.reportSections.length > 0) {
-            this.reportSections.unshift(
+        // Extract individual dates as sections (for daily reports)
+        this.extractDateSections();
+        
+        console.log(`[Report Pilot] Parsed ${this.reportSections.length} report sections`);
+    }
+    
+    /**
+     * Extract date sections from the report content
+     * This helps better organize the report by creating individual sections for each date
+     */
+    private extractDateSections(): void {
+        // Look for ### level headings which typically represent dates in our reports
+        const datePattern = /^### (\d{4}-\d{2}-\d{2})$/;
+        const lines = this.report.split('\n');
+        let currentDate = '';
+        let currentContent = '';
+        let inDateSection = false;
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const dateMatch = line.match(datePattern);
+            
+            if (dateMatch) {
+                // If we were already processing a date section, save it
+                if (inDateSection && currentDate && currentContent) {
+                    this.reportSections.push(
+                        new ReportSectionTreeItem(
+                            currentDate,
+                            currentContent.trim(),
+                            vscode.TreeItemCollapsibleState.Collapsed
+                        )
+                    );
+                }
+                
+                // Start a new date section
+                currentDate = dateMatch[1];
+                currentContent = line + '\n';
+                inDateSection = true;
+            } else if (inDateSection) {
+                if (line.startsWith('## ')) {
+                    // End of date section if we hit a new major section
+                    if (currentDate && currentContent) {
+                        this.reportSections.push(
+                            new ReportSectionTreeItem(
+                                currentDate,
+                                currentContent.trim(),
+                                vscode.TreeItemCollapsibleState.Collapsed
+                            )
+                        );
+                    }
+                    inDateSection = false;
+                    currentDate = '';
+                    currentContent = '';
+                } else {
+                    // Continue current date section
+                    currentContent += line + '\n';
+                }
+            }
+        }
+        
+        // Add final date section if there is one
+        if (inDateSection && currentDate && currentContent) {
+            this.reportSections.push(
                 new ReportSectionTreeItem(
-                    'Full Report',
-                    this.report,
+                    currentDate,
+                    currentContent.trim(),
                     vscode.TreeItemCollapsibleState.Collapsed
                 )
             );
