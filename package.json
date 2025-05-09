@@ -62,7 +62,7 @@
         {
           "id": "report-pilot",
           "title": "Report Pilot",
-          "icon": "resources/icon.svg"
+          "icon": "./resources/icon.svg"
         }
       ]
     },

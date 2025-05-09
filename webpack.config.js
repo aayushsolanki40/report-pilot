@@ -1,5 +1,6 @@
 const path = require('path');
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
+const CopyPlugin = require('copy-webpack-plugin');
 
 module.exports = {
     mode: 'none', // This will be controlled by the --mode flag
@@ -31,7 +32,12 @@ module.exports = {
         vscode: 'commonjs vscode' // Do not bundle the vscode module
     },
     plugins: [
-        new CleanWebpackPlugin()
+        new CleanWebpackPlugin(),
+        new CopyPlugin({
+            patterns: [
+                { from: 'resources', to: 'resources' }
+            ]
+        })
     ],
     devtool: 'source-map',
     infrastructureLogging: {
