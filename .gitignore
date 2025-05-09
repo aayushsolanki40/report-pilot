@@ -4,11 +4,3 @@ node_modules
 build
 dist
 out
-
-.vscode
-.vscode-test
-*.log
-*.ts
-*.map
-*.test.js
-*.spec.js

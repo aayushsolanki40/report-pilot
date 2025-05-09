@@ -1,71 +1,59 @@
-# report-pilot README
+# Report Pilot
 
-This is the README for your extension "report-pilot". After writing up a brief description, we recommend including the following sections.
+Report Pilot is a VS Code extension that helps developers generate work reports based on Git commits. It makes it easy to create summaries of your work over a specific time period, which can be useful for daily standups, weekly reports, or project status updates.
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+- **View Git Commits**: Display a structured view of Git commits from your current workspace
+- **Filter Commits**: Filter commits by author and time range
+- **Generate Reports**: Automatically generate work reports from your commits
+- **Group Commits**: Group commits by common patterns (features, bug fixes, etc.)
+- **Copy Reports**: Easily copy generated reports to the clipboard
 
-For example if there is an image subfolder under your extension project workspace:
+## Getting Started
 
-![feature X](images/feature-x.png)
+1. Install the extension from the VS Code Marketplace
+2. Open a project with Git history
+3. Click on the Report Pilot icon in the Activity Bar
+4. Use "Show Commits" to fetch your recent Git commits
+5. Use "Generate Report" to create a work report based on these commits
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+## Commands
 
-## Requirements
+This extension provides the following commands:
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+- `Report Pilot: Show Commits`: Fetches and displays Git commits for your workspace
+- `Report Pilot: Generate Work Report`: Creates a formatted work report from the fetched commits
 
-## Extension Settings
-
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
+## Settings
 
 This extension contributes the following settings:
 
-* `reportPilot.enable`: Enable/disable this extension.
-* `reportPilot.thing`: Set to `blah` to do something.
+- `reportPilot.enable`: Enable/disable the Report Pilot extension
+- `reportPilot.defaultDays`: Default number of days to include in the report (default: 1)
+- `reportPilot.groupCommits`: Group commits by feature/task in the report (default: true)
 
-## Known Issues
+## Requirements
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+- Git must be installed and accessible in your PATH
+- Your workspace must be a Git repository
+
+## Tips for Best Results
+
+- Use consistent commit message formats to improve the automatic grouping
+- Consider using conventional commit format (e.g., feat:, fix:, docs:) for better report organization
 
 ## Release Notes
 
-Users appreciate release notes as you update your extension.
+### 0.0.1
 
-### 1.0.0
+- Initial release of Report Pilot
+- Basic commit viewing and report generation
 
-Initial release of ...
+## Contributing
 
-### 1.0.1
+Pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.
 
-Fixed issue #.
+## License
 
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using the editor. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+[MIT](LICENSE)
