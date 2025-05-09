@@ -20,7 +20,7 @@ export function registerCommands(context: vscode.ExtensionContext): void {
     });
     
     const reportView = vscode.window.createTreeView('reportView', {
-        treeDataProvider: reportViewProvider
+        treeDataProvider: reportViewProvider as vscode.TreeDataProvider<vscode.TreeItem>
     });
     
     // Register commands

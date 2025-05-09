@@ -78,30 +78,37 @@ export async function getCommitsByDateRange(
             return [];
         }
 
-        // Format dates for git log
+        // Format dates for git log - use more reliable date formats for git
         const fromDate = dayjs(dateRange.from).format('YYYY-MM-DD');
         const toDate = dayjs(dateRange.to).format('YYYY-MM-DD');
         
         console.log(`[Report Pilot] Fetching commits from ${fromDate} to ${toDate}`);
         
-        // Build git options - simplified approach
-        let options: string[] = [];
+        // Build git options using a different approach that is more compatible with git
+        const options: string[] = [];
         
-        // Add date range - using simpler syntax that works more reliably
-        options.push(`--since="${fromDate}"`);
-        options.push(`--until="${toDate} 23:59:59"`);
+        // For Today and Yesterday, use a more relaxed approach
+        if (isToday(dateRange.from) || isYesterday(dateRange.from)) {
+            // For today/yesterday specifically, just use the date without time
+            options.push(`--after=${fromDate} 00:00:00`);
+            options.push(`--before=${toDate} 23:59:59`);
+        } else {
+            // For other date ranges
+            options.push(`--after=${fromDate}`);
+            options.push(`--before=${toDate} 23:59:59`);
+        }
         
-        // Limit results but ensure we get enough data
-        options.push('-n', '100');
+        // We need to make sure we get all branches to find commits
+        options.push('--all');
+        
+        // Format setting - use %B for full message content
+        options.push('--pretty=format:{"hash":"%h","author":"%an <%ae>","date":"%ad","message":"%B"}');
+        options.push('--date=iso');
         
         // Add author filter if specified
         if (author) {
             options.push(`--author="${author}"`);
         }
-        
-        // Format setting - using %B for full message
-        options.push('--date=iso');
-        options.push('--pretty=format:{"hash":"%h","author":"%an <%ae>","date":"%ad","message":"%s"}');
         
         console.log(`[Report Pilot] Running git log with options: ${options.join(' ')}`);
         
@@ -114,9 +121,33 @@ export async function getCommitsByDateRange(
             if (commits.length === 0) {
                 console.log('[Report Pilot] No commits found in date range.');
                 
-                // Only for "today" or "yesterday" show fallback message
-                if (dayjs(dateRange.to).diff(dayjs(dateRange.from), 'day') <= 1) {
-                    vscode.window.showInformationMessage(`No commits found for ${dayjs(dateRange.from).format('YYYY-MM-DD')}.`);
+                // Try with a broader approach for today/yesterday if no commits found
+                if (isToday(dateRange.from) || isYesterday(dateRange.from)) {
+                    console.log('[Report Pilot] Trying with broader date range...');
+                    
+                    // Try again with even more relaxed parameters
+                    const broaderOptions = [
+                        '--all',
+                        '-n', '100', // Limit to recent commits
+                        '--pretty=format:{"hash":"%h","author":"%an <%ae>","date":"%ad","message":"%B"}',
+                        '--date=iso'
+                    ];
+                    
+                    const broaderResult = await git.log(broaderOptions);
+                    const allCommits = parseGitLog(broaderResult);
+                    
+                    // Filter commits by date client-side
+                    const filteredCommits = allCommits.filter(commit => {
+                        const commitDay = dayjs(commit.date).startOf('day');
+                        const fromDay = dayjs(dateRange.from).startOf('day');
+                        const toDay = dayjs(dateRange.to).startOf('day');
+                        
+                        return (commitDay.isSame(fromDay) || commitDay.isSame(toDay) || 
+                                (commitDay.isAfter(fromDay) && commitDay.isBefore(toDay)));
+                    });
+                    
+                    console.log(`[Report Pilot] Found ${filteredCommits.length} commits after client-side filtering`);
+                    return filteredCommits;
                 }
             }
             
@@ -130,6 +161,27 @@ export async function getCommitsByDateRange(
         vscode.window.showErrorMessage(`Failed to get commits: ${error}`);
         return [];
     }
+}
+
+/**
+ * Helper to check if a date is today
+ */
+function isToday(date: Date): boolean {
+    const today = new Date();
+    return date.getDate() === today.getDate() &&
+           date.getMonth() === today.getMonth() &&
+           date.getFullYear() === today.getFullYear();
+}
+
+/**
+ * Helper to check if a date is yesterday
+ */
+function isYesterday(date: Date): boolean {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    return date.getDate() === yesterday.getDate() &&
+           date.getMonth() === yesterday.getMonth() &&
+           date.getFullYear() === yesterday.getFullYear();
 }
 
 /**

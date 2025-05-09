@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import dayjs from 'dayjs';
 import { CommitInfo, summarizeCommits, generateAIWorkReport } from '../utils/gitUtils';
+import { generateOpenAIReport } from '../utils/aiUtils';
 
 /**
  * Tree item representing a report section in the report view
@@ -67,8 +68,29 @@ export class ReportViewProvider implements vscode.TreeDataProvider<vscode.TreeIt
      */
     public async generateAIReport(commits: CommitInfo[]): Promise<void> {
         try {
-            // Generate the AI-enhanced report text
-            this.report = generateAIWorkReport(commits);
+            // Ask user which AI model to use
+            const aiOption = await vscode.window.showQuickPick(
+                [
+                    { label: 'OpenAI (GPT)', description: 'Generate report using OpenAI API (requires API key)', detail: 'More detailed and insightful reports' },
+                    { label: 'Local AI', description: 'Generate report using local code analysis', detail: 'Works offline, no API key needed' }
+                ],
+                { 
+                    placeHolder: 'Choose AI model for report generation'
+                }
+            );
+            
+            if (!aiOption) {
+                return; // User canceled
+            }
+            
+            // Generate the report based on user selection
+            if (aiOption.label === 'OpenAI (GPT)') {
+                vscode.window.showInformationMessage('Generating report using OpenAI...');
+                this.report = await generateOpenAIReport(commits);
+            } else {
+                // Use the built-in AI report generator
+                this.report = generateAIWorkReport(commits);
+            }
             
             // Parse the report into sections based on markdown headings
             this.parseReportSections();
@@ -77,7 +99,7 @@ export class ReportViewProvider implements vscode.TreeDataProvider<vscode.TreeIt
             this._onDidChangeTreeData.fire(undefined);
         } catch (error) {
             vscode.window.showErrorMessage(`Error generating AI report: ${error}`);
-            console.error('Error in generateAIReport:', error);
+            console.error('[Report Pilot] Error in generateAIReport:', error);
         }
     }
     

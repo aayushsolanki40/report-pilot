@@ -139,6 +139,11 @@
           ],
           "default": "today",
           "description": "Default timespan for commit analysis"
+        },
+        "reportPilot.openaiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your OpenAI API key for generating enhanced work reports with AI"
         }
       }
     }
@@ -163,6 +168,7 @@
   },
   "dependencies": {
     "dayjs": "^1.10.7",
+    "openai": "^4.98.0",
     "simple-git": "^3.0.0"
   }
 }
