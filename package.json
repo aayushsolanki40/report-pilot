@@ -17,7 +17,8 @@
   "activationEvents": [
     "onCommand:report-pilot.showCommits",
     "onCommand:report-pilot.generateReport",
-    "onView:commitExplorer"
+    "onView:commitExplorer",
+    "onView:reportView"
   ],
   "main": "./out/extension.js",
   "scripts": {
@@ -55,6 +56,18 @@
         "title": "Refresh Commits",
         "category": "Report Pilot",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "report-pilot.clearReport",
+        "title": "Clear Report",
+        "category": "Report Pilot",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "report-pilot.viewReportInEditor",
+        "title": "Open Report in Editor",
+        "category": "Report Pilot",
+        "icon": "$(open-preview)"
       }
     ],
     "viewsContainers": {
@@ -70,11 +83,13 @@
       "report-pilot": [
         {
           "id": "commitExplorer",
-          "name": "Commits"
+          "name": "Commits",
+          "type": "tree"
         },
         {
           "id": "reportView",
-          "name": "Work Report"
+          "name": "Work Report",
+          "type": "webview"
         }
       ]
     },
@@ -90,7 +105,7 @@
       },
       {
         "view": "reportView",
-        "contents": "Generate a report from your commits to see it here."
+        "contents": "Click the button below to generate a work report based on your Git commits.\n[Generate Report](command:report-pilot.generateReport)"
       }
     ],
     "menus": {
@@ -110,6 +125,16 @@
           "command": "report-pilot.refreshCommits",
           "when": "view == commitExplorer",
           "group": "navigation@3"
+        },
+        {
+          "command": "report-pilot.clearReport",
+          "when": "view == reportView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "report-pilot.viewReportInEditor",
+          "when": "view == reportView",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [

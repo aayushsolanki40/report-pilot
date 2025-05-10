@@ -11,17 +11,20 @@ import { ReportViewProvider } from '../providers/reportViewProvider';
 export function registerCommands(context: vscode.ExtensionContext): void {
     // Create providers
     const gitCommitProvider = new GitCommitProvider();
-    const reportViewProvider = new ReportViewProvider();
+    const reportViewProvider = new ReportViewProvider(context.extensionUri);
     
-    // Register the tree data providers
+    // Register the tree data provider for commits
     const commitExplorer = vscode.window.createTreeView('commitExplorer', {
         treeDataProvider: gitCommitProvider,
         showCollapseAll: true
     });
     
-    const reportView = vscode.window.createTreeView('reportView', {
-        treeDataProvider: reportViewProvider as vscode.TreeDataProvider<vscode.TreeItem>
-    });
+    // Register the webview provider for reports
+    const reportViewProviderRegistration = vscode.window.registerWebviewViewProvider(
+        'reportView',
+        reportViewProvider,
+        { webviewOptions: { retainContextWhenHidden: true } }
+    );
     
     // Register commands
     const commands: { [key: string]: (...args: any[]) => any } = {
@@ -52,19 +55,27 @@ export function registerCommands(context: vscode.ExtensionContext): void {
             });
         },
         'report-pilot.copyReport': async () => {
-            await reportViewProvider.copyReportToClipboard();
+            await vscode.env.clipboard.writeText(reportViewProvider.getReportText());
+            vscode.window.showInformationMessage('Work report copied to clipboard!');
         },
         'report-pilot.viewReportInEditor': async () => {
-            await reportViewProvider.showReportPreview();
-        },
-        'report-pilot.viewReportSection': async (content: string) => {
+            const reportText = reportViewProvider.getReportText();
+            if (!reportText) {
+                vscode.window.showInformationMessage('No report has been generated yet.');
+                return;
+            }
+            
             // Create a temporary document and show it
             const doc = await vscode.workspace.openTextDocument({
-                content: content,
+                content: reportText,
                 language: 'markdown'
             });
             
             await vscode.window.showTextDocument(doc, { preview: true });
+        },
+        'report-pilot.clearReport': async () => {
+            reportViewProvider.clearReport();
+            vscode.window.showInformationMessage('Report cleared. Ready to generate a new report.');
         }
     };
     
@@ -74,6 +85,6 @@ export function registerCommands(context: vscode.ExtensionContext): void {
         context.subscriptions.push(disposable);
     }
     
-    // Register the views
-    context.subscriptions.push(commitExplorer, reportView);
+    // Register the webview view provider
+    context.subscriptions.push(commitExplorer, reportViewProviderRegistration);
 }

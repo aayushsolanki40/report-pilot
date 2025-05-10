@@ -1,73 +1,385 @@
 import * as vscode from 'vscode';
 import dayjs from 'dayjs';
-import { CommitInfo, summarizeCommits, generateAIWorkReport } from '../utils/gitUtils';
+import { CommitInfo, generateAIWorkReport } from '../utils/gitUtils';
 import { generateOpenAIReport } from '../utils/aiUtils';
 
 /**
- * Tree item representing a report section in the report view
+ * WebView provider for rendering Work Reports directly in HTML
  */
-export class ReportSectionTreeItem extends vscode.TreeItem {
-    constructor(
-        public readonly label: string,
-        public readonly content: string,
-        public readonly collapsibleState: vscode.TreeItemCollapsibleState
+export class ReportViewProvider implements vscode.WebviewViewProvider {
+    private _view?: vscode.WebviewView;
+    private _report: string = '';
+    private _isGenerating: boolean = false;
+    
+    constructor(private readonly _extensionUri: vscode.Uri) {}
+    
+    /**
+     * Called when the view becomes visible
+     */
+    public resolveWebviewView(
+        webviewView: vscode.WebviewView,
+        context: vscode.WebviewViewResolveContext,
+        token: vscode.CancellationToken
     ) {
-        super(label, collapsibleState);
+        this._view = webviewView;
         
-        // Set tooltip to show content preview
-        this.tooltip = content.substring(0, 100) + (content.length > 100 ? '...' : '');
-        
-        // Add document icon
-        this.iconPath = new vscode.ThemeIcon('notebook');
-        
-        // Add a command to view the content when clicked
-        this.command = {
-            command: 'report-pilot.viewReportSection',
-            title: 'View Report Section',
-            arguments: [this.content]
+        // Set options for the webview
+        webviewView.webview.options = {
+            enableScripts: true,
+            localResourceRoots: [this._extensionUri]
         };
         
-        // Add a description to show a preview
-        this.description = content.split('\n')[0].substring(0, 30) + 
-            (content.split('\n')[0].length > 30 ? '...' : '');
+        // Initialize the webview with the generate button
+        this._updateWebviewContent();
         
-        // Enable context menu actions
-        this.contextValue = 'reportSection';
+        // Set up message handling for the webview
+        webviewView.webview.onDidReceiveMessage(async (message) => {
+            switch (message.command) {
+                case 'generateReport':
+                    // Delegate to the command handler
+                    vscode.commands.executeCommand('report-pilot.generateReport');
+                    break;
+                
+                case 'copyReport':
+                    await vscode.env.clipboard.writeText(this._report);
+                    vscode.window.showInformationMessage('Work report copied to clipboard!');
+                    break;
+                
+                case 'openInEditor':
+                    // Create a temporary document and show it
+                    const doc = await vscode.workspace.openTextDocument({
+                        content: this._report,
+                        language: 'markdown'
+                    });
+                    await vscode.window.showTextDocument(doc, { preview: true });
+                    break;
+                
+                case 'newReport':
+                    this.clearReport();
+                    break;
+            }
+        });
     }
-}
-
-/**
- * Provider for the Report View TreeView
- */
-export class ReportViewProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | null> = new vscode.EventEmitter<vscode.TreeItem | undefined | null>();
-    readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | null> = this._onDidChangeTreeData.event;
     
-    private report: string = '';
-    private reportSections: ReportSectionTreeItem[] = [];
-
-    constructor() {}
+    /**
+     * Update the webview content - either showing the generate button or the report
+     */
+    private _updateWebviewContent() {
+        if (!this._view) {
+            return;
+        }
+        
+        // Generate the HTML content
+        const webview = this._view.webview;
+        webview.html = this._getHtmlForWebview(webview);
+    }
+    
+    /**
+     * Generate the HTML for the webview
+     */
+    private _getHtmlForWebview(webview: vscode.Webview): string {
+        // If we have a report, show it, otherwise show the generate button
+        if (this._report) {
+            return this._getReportHtml();
+        } else {
+            return this._getGenerateButtonHtml();
+        }
+    }
+    
+    /**
+     * Generate HTML for the generate button
+     */
+    private _getGenerateButtonHtml(): string {
+        return `<!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Work Report</title>
+            <style>
+                body {
+                    font-family: var(--vscode-font-family);
+                    padding: 20px;
+                    color: var(--vscode-editor-foreground);
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                }
+                .generate-button {
+                    background-color: var(--vscode-button-background);
+                    color: var(--vscode-button-foreground);
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 4px;
+                    font-size: 14px;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    margin-top: 20px;
+                }
+                .generate-button:hover {
+                    background-color: var(--vscode-button-hoverBackground);
+                }
+                .icon {
+                    font-size: 16px;
+                }
+                .description {
+                    margin-bottom: 20px;
+                    text-align: center;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="description">
+                <p>Generate a comprehensive work report based on your Git commits.</p>
+                <p>The report will include all work completed with dates.</p>
+            </div>
+            <button class="generate-button" id="generateBtn">
+                <span class="icon">▶</span>
+                Generate Report
+            </button>
+            
+            <script>
+                const vscode = acquireVsCodeApi();
+                document.getElementById('generateBtn').addEventListener('click', () => {
+                    vscode.postMessage({
+                        command: 'generateReport'
+                    });
+                });
+            </script>
+        </body>
+        </html>`;
+    }
+    
+    /**
+     * Generate HTML for showing "generating" state
+     */
+    private _getGeneratingHtml(): string {
+        return `<!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Work Report</title>
+            <style>
+                body {
+                    font-family: var(--vscode-font-family);
+                    padding: 20px;
+                    color: var(--vscode-editor-foreground);
+                }
+                .loader {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 40px 0;
+                }
+                .loader-dot {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    background-color: var(--vscode-editor-foreground);
+                    margin: 0 4px;
+                    animation: pulse 1.5s infinite ease-in-out;
+                }
+                .loader-dot:nth-child(2) {
+                    animation-delay: 0.2s;
+                }
+                .loader-dot:nth-child(3) {
+                    animation-delay: 0.4s;
+                }
+                @keyframes pulse {
+                    0%, 100% {
+                        transform: scale(0.7);
+                        opacity: 0.5;
+                    }
+                    50% {
+                        transform: scale(1);
+                        opacity: 1;
+                    }
+                }
+                .generating-text {
+                    text-align: center;
+                    font-size: 16px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="generating-text">Generating report...</div>
+            <div class="loader">
+                <div class="loader-dot"></div>
+                <div class="loader-dot"></div>
+                <div class="loader-dot"></div>
+            </div>
+        </body>
+        </html>`;
+    }
+    
+    /**
+     * Generate HTML for the report content
+     */
+    private _getReportHtml(): string {
+        const currentDate = dayjs().format('YYYY-MM-DD');
+        return `<!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Work Report</title>
+            <style>
+                body {
+                    font-family: var(--vscode-font-family);
+                    padding: 20px;
+                    color: var(--vscode-editor-foreground);
+                    max-width: 100%;
+                }
+                .report-title {
+                    font-size: 22px;
+                    font-weight: bold;
+                    margin-bottom: 8px;
+                }
+                .report-date {
+                    font-size: 14px;
+                    color: var(--vscode-descriptionForeground);
+                    margin-bottom: 20px;
+                }
+                .report-content {
+                    font-size: 14px;
+                    line-height: 1.6;
+                    white-space: pre-wrap;
+                }
+                h2 {
+                    margin-top: 20px;
+                    border-bottom: 1px solid var(--vscode-panel-border);
+                    padding-bottom: 4px;
+                }
+                ul {
+                    padding-left: 20px;
+                }
+                .actions {
+                    margin-top: 30px;
+                    display: flex;
+                    gap: 10px;
+                }
+                .action-button {
+                    background-color: var(--vscode-button-secondaryBackground);
+                    color: var(--vscode-button-secondaryForeground);
+                    border: none;
+                    padding: 6px 12px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    cursor: pointer;
+                }
+                .action-button:hover {
+                    background-color: var(--vscode-button-secondaryHoverBackground);
+                }
+                .new-report-button {
+                    background-color: var(--vscode-button-background);
+                    color: var(--vscode-button-foreground);
+                }
+                .new-report-button:hover {
+                    background-color: var(--vscode-button-hoverBackground);
+                }
+            </style>
+        </head>
+        <body>
+            <div class="report-title">Work Report</div>
+            <div class="report-date">Generated on: ${currentDate}</div>
+            <div class="report-content">${this._formatReportContent(this._report)}</div>
+            
+            <div class="actions">
+                <button class="action-button new-report-button" id="newReportBtn">New Report</button>
+                <button class="action-button" id="copyReportBtn">Copy to Clipboard</button>
+                <button class="action-button" id="openEditorBtn">Open in Editor</button>
+            </div>
+            
+            <script>
+                const vscode = acquireVsCodeApi();
+                
+                // New report button
+                document.getElementById('newReportBtn').addEventListener('click', () => {
+                    vscode.postMessage({
+                        command: 'newReport'
+                    });
+                });
+                
+                // Copy report button
+                document.getElementById('copyReportBtn').addEventListener('click', () => {
+                    vscode.postMessage({
+                        command: 'copyReport'
+                    });
+                });
+                
+                // Open in editor button
+                document.getElementById('openEditorBtn').addEventListener('click', () => {
+                    vscode.postMessage({
+                        command: 'openInEditor'
+                    });
+                });
+            </script>
+        </body>
+        </html>`;
+    }
+    
+    /**
+     * Format the report content with proper HTML formatting
+     */
+    private _formatReportContent(content: string): string {
+        // Convert markdown-style content to HTML
+        let formatted = content
+            .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+            .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+            .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/- (.*$)/gm, '<li>$1</li>')
+            .replace(/<li>(.*)<\/li>/gm, function(match) {
+                return '<ul>' + match + '</ul>';
+            })
+            .replace(/<\/ul>\s*<ul>/g, '')
+            .replace(/\n\n/g, '<br><br>');
+            
+        return formatted;
+    }
+    
+    /**
+     * Show the generating UI
+     */
+    public showGeneratingUI() {
+        if (!this._view) {
+            return;
+        }
+        
+        this._view.webview.html = this._getGeneratingHtml();
+        this._isGenerating = true;
+    }
     
     /**
      * Generate a report from commits
      */
     public generateReport(commits: CommitInfo[]): void {
-        // Generate the report text
-        this.report = summarizeCommits(commits);
-        
-        // Parse the report into sections based on markdown headings
-        this.parseReportSections();
-        
-        // Notify the tree view to refresh
-        this._onDidChangeTreeData.fire(undefined);
+        // Call the AI report generator
+        this.generateAIReport(commits);
     }
 
     /**
-     * Generate an AI-powered report from commits
-     * This uses advanced analysis to categorize and summarize work
+     * Generate an AI-powered report from commits with streaming updates
      */
     public async generateAIReport(commits: CommitInfo[]): Promise<void> {
+        // Generate a consistent date format for both methods
+        const currentDate = dayjs().format('YYYY-MM-DD HH:mm:ss');
+        const reportHeader = `# Work Report\nGenerated on: ${currentDate}\n\n`;
+
         try {
+            // Prevent multiple report generations at the same time
+            if (this._isGenerating && !this._view) {
+                vscode.window.showInformationMessage('A report is already being generated, please wait.');
+                return;
+            }
+
+            this._isGenerating = true;
+            this.showGeneratingUI();
+            
             // Ask user which AI model to use
             const aiOption = await vscode.window.showQuickPick(
                 [
@@ -80,230 +392,101 @@ export class ReportViewProvider implements vscode.TreeDataProvider<vscode.TreeIt
             );
             
             if (!aiOption) {
-                return; // User canceled
+                // User canceled - restore the button
+                this._isGenerating = false;
+                this._updateWebviewContent();
+                return;
             }
+            
+            // Start with header in both cases
+            this._report = reportHeader;
             
             // Generate the report based on user selection
             if (aiOption.label === 'OpenAI (GPT)') {
-                vscode.window.showInformationMessage('Generating report using OpenAI...');
-                this.report = await generateOpenAIReport(commits);
+                try {
+                    // Generate with OpenAI
+                    const fullReport = await generateOpenAIReport(commits);
+                    this._report += fullReport;
+                    this._updateWebviewContent();
+                } catch (openaiError) {
+                    vscode.window.showErrorMessage(`Error with OpenAI: ${openaiError}`);
+                    this._report += `\n\nError generating OpenAI report: ${openaiError}`;
+                    this._updateWebviewContent();
+                }
             } else {
-                // Use the built-in AI report generator
-                this.report = generateAIWorkReport(commits);
+                // Generate with local AI
+                const report = generateAIWorkReport(commits);
+                this._report += report;
+                this._updateWebviewContent();
             }
             
-            // Parse the report into sections based on markdown headings
-            this.parseReportSections();
+            // Add a final completion message
+            this._report += `\n\n_Report generation completed at ${dayjs().format('HH:mm:ss')}_`;
+            this._updateWebviewContent();
             
-            // Notify the tree view to refresh
-            this._onDidChangeTreeData.fire(undefined);
         } catch (error) {
             vscode.window.showErrorMessage(`Error generating AI report: ${error}`);
             console.error('[Report Pilot] Error in generateAIReport:', error);
+            this._report = `${reportHeader}\n\nError generating report: ${error}`;
+            this._updateWebviewContent();
+        } finally {
+            this._isGenerating = false;
         }
     }
     
     /**
-     * Parse the report text into sections based on markdown headings
+     * Break a report into chunks for streaming display
      */
-    private parseReportSections(): void {
-        this.reportSections = [];
-        
-        if (!this.report || this.report.trim() === '') {
-            console.log("[Report Pilot] No report content to parse");
-            return;
-        }
-        
-        console.log("[Report Pilot] Parsing report content");
-        
-        // Add overall summary item first
-        this.reportSections.push(
-            new ReportSectionTreeItem(
-                'Full Report',
-                this.report,
-                vscode.TreeItemCollapsibleState.Collapsed
-            )
-        );
-        
-        // Split the report by heading lines (##)
-        const lines = this.report.split('\n');
+    private _chunkReportForStreaming(report: string): string[] {
+        // Split by sections (## headers) or by lines
+        const sections: string[] = [];
+        const lines = report.split('\n');
         let currentSection = '';
-        let currentContent = '';
-        let sectionStartIndex = -1;
         
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             
-            if (line.startsWith('## ')) {
-                // If we were already processing a section, save it
-                if (currentSection && currentContent) {
-                    this.reportSections.push(
-                        new ReportSectionTreeItem(
-                            currentSection,
-                            currentContent.trim(),
-                            vscode.TreeItemCollapsibleState.Collapsed
-                        )
-                    );
-                }
-                
-                // Start a new section
-                currentSection = line.substring(3).trim();
-                sectionStartIndex = i;
-                currentContent = line + '\n';
-            } else if (currentSection) {
-                // Add line to current section content
-                currentContent += line + '\n';
+            // If we hit a header, start a new section
+            if (line.startsWith('## ') && currentSection) {
+                sections.push(currentSection);
+                currentSection = line + '\n';
+            } else {
+                currentSection += line + '\n';
             }
-        }
-        
-        // Add the last section if there is one
-        if (currentSection && currentContent) {
-            this.reportSections.push(
-                new ReportSectionTreeItem(
-                    currentSection,
-                    currentContent.trim(),
-                    vscode.TreeItemCollapsibleState.Collapsed
-                )
-            );
-        }
-        
-        // Extract individual dates as sections (for daily reports)
-        this.extractDateSections();
-        
-        console.log(`[Report Pilot] Parsed ${this.reportSections.length} report sections`);
-    }
-    
-    /**
-     * Extract date sections from the report content
-     * This helps better organize the report by creating individual sections for each date
-     */
-    private extractDateSections(): void {
-        // Look for ### level headings which typically represent dates in our reports
-        const datePattern = /^### (\d{4}-\d{2}-\d{2})$/;
-        const lines = this.report.split('\n');
-        let currentDate = '';
-        let currentContent = '';
-        let inDateSection = false;
-        
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const dateMatch = line.match(datePattern);
             
-            if (dateMatch) {
-                // If we were already processing a date section, save it
-                if (inDateSection && currentDate && currentContent) {
-                    this.reportSections.push(
-                        new ReportSectionTreeItem(
-                            currentDate,
-                            currentContent.trim(),
-                            vscode.TreeItemCollapsibleState.Collapsed
-                        )
-                    );
-                }
-                
-                // Start a new date section
-                currentDate = dateMatch[1];
-                currentContent = line + '\n';
-                inDateSection = true;
-            } else if (inDateSection) {
-                if (line.startsWith('## ')) {
-                    // End of date section if we hit a new major section
-                    if (currentDate && currentContent) {
-                        this.reportSections.push(
-                            new ReportSectionTreeItem(
-                                currentDate,
-                                currentContent.trim(),
-                                vscode.TreeItemCollapsibleState.Collapsed
-                            )
-                        );
-                    }
-                    inDateSection = false;
-                    currentDate = '';
-                    currentContent = '';
-                } else {
-                    // Continue current date section
-                    currentContent += line + '\n';
-                }
+            // Also break on paragraphs to get more fine-grained streaming
+            if (line === '' && currentSection.length > 50) {
+                sections.push(currentSection);
+                currentSection = '';
+            }
+            
+            // Break very long sections
+            if (currentSection.length > 200) {
+                sections.push(currentSection);
+                currentSection = '';
             }
         }
         
-        // Add final date section if there is one
-        if (inDateSection && currentDate && currentContent) {
-            this.reportSections.push(
-                new ReportSectionTreeItem(
-                    currentDate,
-                    currentContent.trim(),
-                    vscode.TreeItemCollapsibleState.Collapsed
-                )
-            );
-        }
-    }
-    
-    /**
-     * Get TreeItem representation of the element
-     */
-    getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
-        return element;
-    }
-    
-    /**
-     * Get the children of the element
-     */
-    getChildren(element?: vscode.TreeItem): vscode.TreeItem[] {
-        // If no element is provided, return all report sections
-        if (!element) {
-            return this.reportSections;
+        // Add any remaining content
+        if (currentSection) {
+            sections.push(currentSection);
         }
         
-        // No children for report sections
-        return [];
+        return sections;
     }
-    
+
     /**
      * Get the full report text
      */
     public getReportText(): string {
-        return this.report;
+        return this._report;
     }
     
     /**
-     * Show a preview of the report in a markdown editor
-     */
-    public async showReportPreview(): Promise<void> {
-        if (!this.report) {
-            vscode.window.showInformationMessage('No report has been generated yet.');
-            return;
-        }
-        
-        // Create a temporary document and show it
-        const doc = await vscode.workspace.openTextDocument({
-            content: this.report,
-            language: 'markdown'
-        });
-        
-        await vscode.window.showTextDocument(doc, { preview: true });
-    }
-    
-    /**
-     * Copy the report text to clipboard
-     */
-    public async copyReportToClipboard(): Promise<void> {
-        if (!this.report) {
-            vscode.window.showInformationMessage('No report has been generated yet.');
-            return;
-        }
-        
-        // Copy to clipboard
-        await vscode.env.clipboard.writeText(this.report);
-        vscode.window.showInformationMessage('Work report copied to clipboard!');
-    }
-    
-    /**
-     * Clear the current report
+     * Clear the current report and show the Generate button again
      */
     public clearReport(): void {
-        this.report = '';
-        this.reportSections = [];
-        this._onDidChangeTreeData.fire(undefined);
+        this._report = '';
+        this._updateWebviewContent();
     }
 }
