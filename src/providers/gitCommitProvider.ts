@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import dayjs from 'dayjs'; // Fixed import
-import { CommitInfo, getCommitsByDateRange, getDateRange, isGitRepository, getWorkspacePath } from '../utils/gitUtils';
+import { CommitInfo, getCommitsByDateRange, getDateRange, isGitRepository, getWorkspacePath, addBranchInfoToCommits } from '../utils/gitUtils';
 
 /**
  * Tree item representing a commit in the tree view
@@ -10,7 +10,12 @@ export class CommitTreeItem extends vscode.TreeItem {
         public readonly commit: CommitInfo,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState
     ) {
-        super(commit.message, collapsibleState);
+        // If we have a branch, include it in the label
+        const label = commit.branch 
+            ? `${commit.message} [${commit.branch}]` 
+            : commit.message;
+            
+        super(label, collapsibleState);
 
         // Make sure we have a valid date before formatting
         let formattedDate = "Invalid Date";
@@ -29,8 +34,12 @@ export class CommitTreeItem extends vscode.TreeItem {
             console.error(`[Report Pilot] Error formatting date for commit ${commit.hash}:`, error);
         }
 
-        // Set tooltip with detailed information
-        this.tooltip = `${commit.message}\n${commit.hash}\n${commit.author}\n${formattedDate}`;
+        // Set tooltip with detailed information including branch
+        let tooltipText = `${commit.message}\n${commit.hash}\n${commit.author}\n${formattedDate}`;
+        if (commit.branch) {
+            tooltipText += `\nBranch: ${commit.branch}`;
+        }
+        this.tooltip = tooltipText;
         
         // Set description to show the date in the tree view
         this.description = formattedDate;
@@ -126,10 +135,17 @@ export class GitCommitProvider implements vscode.TreeDataProvider<vscode.TreeIte
             const dateRange = getDateRange(this.timeSpan);
             console.log(`[Report Pilot] Refreshing commits for timespan: ${this.timeSpan}`);
             
-            this.commits = await getCommitsByDateRange(dateRange);
-            console.log(`[Report Pilot] Provider received ${this.commits.length} commits`);
+            // Get commits for the date range
+            let commits = await getCommitsByDateRange(dateRange);
             
-            if (this.commits.length === 0) {
+            // Add branch information to the commits
+            commits = await addBranchInfoToCommits(commits);
+            
+            console.log(`[Report Pilot] Provider received ${commits.length} commits`);
+            
+            this.commits = commits;
+            
+            if (commits.length === 0) {
                 this.errorMessage = `No commits found for ${this.getTimeSpanLabel().toLowerCase()}. Try a different time period.`;
                 console.log(`[Report Pilot] No commits found for ${this.timeSpan}`);
             }

@@ -9,6 +9,7 @@ export interface CommitInfo {
     date: Date;
     message: string;
     author: string;
+    branch?: string; // Add branch information
     files?: string[];
 }
 
@@ -791,4 +792,140 @@ function cleanCommitMessage(message: string): string {
 function capitalizeFirstLetter(str: string): string {
     if (!str || str.length === 0) return str;
     return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/**
+ * Get branch name for a specific commit
+ */
+export async function getBranchForCommit(commitHash: string): Promise<string | undefined> {
+    try {
+        const git = getGit();
+        if (!git) {
+            return undefined;
+        }
+
+        // Use git branch command to find which branches contain this commit
+        const result = await git.raw(['branch', '--contains', commitHash]);
+        
+        // Parse the result to extract branch names
+        if (result) {
+            // Split by lines and find current branch (marked with *)
+            const branches = result.split('\n')
+                .map(b => b.trim())
+                .filter(b => b.length > 0);
+                
+            // First try to find the current branch (marked with *)
+            const currentBranch = branches.find(b => b.startsWith('*'));
+            if (currentBranch) {
+                return currentBranch.substring(1).trim();
+            }
+            
+            // If no current branch found, just return the first one
+            if (branches.length > 0) {
+                return branches[0].replace('*', '').trim();
+            }
+        }
+        
+        return undefined;
+    } catch (error) {
+        console.error(`[Report Pilot] Error getting branch for commit ${commitHash}:`, error);
+        return undefined;
+    }
+}
+
+/**
+ * Get branch information for an array of commits
+ * This is optimized to batch the branch lookups to reduce git calls
+ */
+export async function addBranchInfoToCommits(commits: CommitInfo[]): Promise<CommitInfo[]> {
+    if (!commits.length) {
+        return commits;
+    }
+    
+    try {
+        const git = getGit();
+        if (!git) {
+            return commits;
+        }
+        
+        // Get all branch information first
+        const branchesResult = await git.branch();
+        const currentBranchName = branchesResult.current;
+        console.log(`[Report Pilot] Current branch: ${currentBranchName}`);
+
+        // Create a map to store the commit-to-branch relationship
+        const commitBranchMap = new Map<string, string>();
+        
+        // Get the commit history for each branch to determine original branch
+        const branches = Object.keys(branchesResult.branches);
+        for (const branchName of branches) {
+            try {
+                if (branchName === 'HEAD') continue; // Skip detached HEAD
+                
+                console.log(`[Report Pilot] Getting commits for branch: ${branchName}`);
+                
+                // Fetch commit history for this specific branch
+                const branchCommits = await git.log({
+                    from: branchName, 
+                    maxCount: 100 // Reasonable limit to avoid too many commits
+                });
+                
+                // Find first-parent commits that are unique to this branch
+                // These are the commits that were likely made directly to this branch
+                for (const commit of branchCommits.all) {
+                    // Only store if we haven't encountered this commit yet or it's from a feature branch
+                    if (!commitBranchMap.has(commit.hash) || 
+                        (branchName !== 'main' && branchName !== 'master')) {
+                        commitBranchMap.set(commit.hash, branchName);
+                    }
+                }
+            } catch (error) {
+                console.warn(`[Report Pilot] Error getting commits for branch ${branchName}:`, error);
+            }
+        }
+        
+        // If we couldn't find branch info with the approach above, use the traditional method
+        for (const commit of commits) {
+            if (!commitBranchMap.has(commit.hash)) {
+                try {
+                    // Traditional approach: Use branch --contains to find branches containing this commit
+                    const result = await git.raw([
+                        'branch', '--contains', commit.hash
+                    ]);
+                    
+                    if (result) {
+                        const branches = result.split('\n')
+                            .map(b => b.trim())
+                            .filter(b => b.length > 0)
+                            .map(b => b.replace('*', '').trim());
+                        
+                        if (branches.length > 0) {
+                            // If commit is in multiple branches, prefer main/master as it's likely merged
+                            const mainBranch = branches.find(b => 
+                                b === 'main' || b === 'master'
+                            );
+                            
+                            commitBranchMap.set(
+                                commit.hash, 
+                                mainBranch || branches[0]
+                            );
+                        }
+                    }
+                } catch (error) {
+                    console.warn(`[Report Pilot] Error finding branch for commit ${commit.hash}:`, error);
+                }
+            }
+        }
+        
+        console.log(`[Report Pilot] Branch mapping complete. Found mappings for ${commitBranchMap.size} commits.`);
+        
+        // Update commits with branch information
+        return commits.map(commit => ({
+            ...commit,
+            branch: commitBranchMap.get(commit.hash)
+        }));
+    } catch (error) {
+        console.error('[Report Pilot] Error adding branch info to commits:', error);
+        return commits;
+    }
 }
