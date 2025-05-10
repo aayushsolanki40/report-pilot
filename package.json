@@ -2,7 +2,7 @@
   "name": "report-pilot",
   "displayName": "Report Pilot",
   "description": "Generate work reports from Git commits in your project",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "publisher": "AayushSolanki",
   "repository": {
     "type": "git",

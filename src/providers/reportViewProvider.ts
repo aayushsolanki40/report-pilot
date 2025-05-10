@@ -399,25 +399,42 @@ export class ReportViewProvider implements vscode.WebviewViewProvider {
             }
             
             // Start with header in both cases
-            this._report = reportHeader;
+            this._report = '';
+            this._updateWebviewContent(); // Show the report header immediately
             
             // Generate the report based on user selection
             if (aiOption.label === 'OpenAI (GPT)') {
                 try {
                     // Generate with OpenAI
                     const fullReport = await generateOpenAIReport(commits);
-                    this._report += fullReport;
-                    this._updateWebviewContent();
+                    
+                    // Stream the report content in chunks
+                    const chunks = this._chunkReportForStreaming(fullReport);
+                    for (const chunk of chunks) {
+                        this._report += chunk;
+                        this._updateWebviewContent();
+                        
+                        // Small delay to simulate streaming
+                        await new Promise(resolve => setTimeout(resolve, 50));
+                    }
                 } catch (openaiError) {
                     vscode.window.showErrorMessage(`Error with OpenAI: ${openaiError}`);
                     this._report += `\n\nError generating OpenAI report: ${openaiError}`;
                     this._updateWebviewContent();
                 }
             } else {
-                // Generate with local AI
-                const report = generateAIWorkReport(commits);
-                this._report += report;
-                this._updateWebviewContent();
+                // Generate with local AI and stream it
+                const fullReport = generateAIWorkReport(commits);
+                
+                // Stream the report content in chunks
+                const chunks = this._chunkReportForStreaming(fullReport);
+                for (const chunk of chunks) {
+                    this._report += chunk;
+                    this._updateWebviewContent();
+                    
+                    // Small delay to simulate streaming
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
             }
             
             // Add a final completion message
@@ -427,7 +444,7 @@ export class ReportViewProvider implements vscode.WebviewViewProvider {
         } catch (error) {
             vscode.window.showErrorMessage(`Error generating AI report: ${error}`);
             console.error('[Report Pilot] Error in generateAIReport:', error);
-            this._report = `${reportHeader}\n\nError generating report: ${error}`;
+            this._report = `Error generating report: ${error}`;
             this._updateWebviewContent();
         } finally {
             this._isGenerating = false;
