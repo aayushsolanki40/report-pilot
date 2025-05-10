@@ -292,9 +292,17 @@ export class GitCommitProvider implements vscode.TreeDataProvider<vscode.TreeIte
                         const workspacePath = getWorkspacePath();
                         if (workspacePath) {
                             const simpleGitInstance = git.default(workspacePath);
-                            const result = await simpleGitInstance.log(['-n', '50', '--date=iso']);
+                            
+                            // Use standard git log options - this works reliably
+                            const result = await simpleGitInstance.log([
+                                '-n', '50',
+                                '--date=iso'
+                            ]);
+                            
+                            console.log(`[Report Pilot] All Recent Commits found ${result?.all?.length || 0} commits`);
                             
                             if (result && result.all && result.all.length > 0) {
+                                // Map the result directly to our CommitInfo format
                                 this.commits = result.all.map(commit => ({
                                     hash: commit.hash,
                                     message: commit.message || '[No message]',
@@ -305,6 +313,12 @@ export class GitCommitProvider implements vscode.TreeDataProvider<vscode.TreeIte
                                 
                                 this.timeSpan = 'custom';
                                 this.errorMessage = null;
+                                console.log(`[Report Pilot] Processed ${this.commits.length} commits for All Recent`);
+                                
+                                // Debug the first few commits to check message content
+                                this.commits.slice(0, 3).forEach((commit, i) => {
+                                    console.log(`[Report Pilot] Commit ${i}: hash=${commit.hash}, message="${commit.message}"`);
+                                });
                             } else {
                                 this.errorMessage = "No commits found in the repository";
                             }

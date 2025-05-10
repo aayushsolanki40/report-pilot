@@ -12,25 +12,6 @@ Report Pilot is a VS Code extension that helps developers generate work reports 
 - **Work Summarization**: Get intelligent summaries that categorize your work by patterns
 - **One-Click Sharing**: Copy reports to clipboard for easy sharing via email or chat
 
-## Installation
-
-You can install this extension in several ways:
-
-1. **VS Code Marketplace**:
-   - Search for "Report Pilot" in the Extensions view
-   - Click Install
-
-2. **Manual Installation**:
-   - Download the `.vsix` file from the [releases page](https://github.com/your-username/report-pilot/releases)
-   - Run `code --install-extension report-pilot-x.x.x.vsix`
-
-3. **Build from Source**:
-   - Clone this repository
-   - Run `npm install`
-   - Run `npm run build`
-   - Run `npm run package`
-   - Install the generated VSIX file
-
 ## How to Use
 
 1. **Open a Git Repository**: Launch VS Code with a folder that contains a Git repository.
@@ -73,34 +54,5 @@ For best results with Report Pilot:
 2. **Include ticket/issue numbers**: This helps with traceability in your reports
 3. **Write descriptive commit messages**: This makes your reports more meaningful
 
-## Development
-
-### Requirements
-
-- Node.js
-- Git
-- VS Code
-
-### Building and Testing
-
-1. Clone the repository
-2. Run `npm install` to install dependencies
-3. Run `npm run build` to compile
-4. Run `npm run test` to run tests
-5. Run `npm run package` to create a VSIX package
-
-### Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-If you encounter any issues or have suggestions, please file an issue in the [GitHub repository](https://github.com/your-username/report-pilot/issues).
-
----
 
 **Enjoy more productive standups with Report Pilot!**

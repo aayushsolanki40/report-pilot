@@ -101,8 +101,7 @@ export async function getCommitsByDateRange(
         // We need to make sure we get all branches to find commits
         options.push('--all');
         
-        // Format setting - use %B for full message content
-        options.push('--pretty=format:{"hash":"%h","author":"%an <%ae>","date":"%ad","message":"%B"}');
+        // Add date format for consistency
         options.push('--date=iso');
         
         // Add author filter if specified
@@ -113,12 +112,12 @@ export async function getCommitsByDateRange(
         console.log(`[Report Pilot] Running git log with options: ${options.join(' ')}`);
         
         try {
+            // Get the commits using the standard git log format
             const result = await git.log(options);
-            const commits = parseGitLog(result);
-            console.log(`[Report Pilot] Found ${commits.length} commits with the specified options`);
+            console.log(`[Report Pilot] Found ${result?.all?.length || 0} commits with the specified options`);
             
             // If no commits found with the date range
-            if (commits.length === 0) {
+            if (!result?.all?.length) {
                 console.log('[Report Pilot] No commits found in date range.');
                 
                 // Try with a broader approach for today/yesterday if no commits found
@@ -129,27 +128,58 @@ export async function getCommitsByDateRange(
                     const broaderOptions = [
                         '--all',
                         '-n', '100', // Limit to recent commits
-                        '--pretty=format:{"hash":"%h","author":"%an <%ae>","date":"%ad","message":"%B"}',
                         '--date=iso'
                     ];
                     
                     const broaderResult = await git.log(broaderOptions);
-                    const allCommits = parseGitLog(broaderResult);
                     
-                    // Filter commits by date client-side
-                    const filteredCommits = allCommits.filter(commit => {
-                        const commitDay = dayjs(commit.date).startOf('day');
-                        const fromDay = dayjs(dateRange.from).startOf('day');
-                        const toDay = dayjs(dateRange.to).startOf('day');
+                    if (broaderResult?.all?.length) {
+                        // Map the commit data to our CommitInfo format
+                        const allCommits = broaderResult.all.map(commit => ({
+                            hash: commit.hash,
+                            message: commit.message || '[No message]',
+                            author: commit.author_name || 'Unknown',
+                            date: new Date(commit.date),
+                            files: []
+                        }));
                         
-                        return (commitDay.isSame(fromDay) || commitDay.isSame(toDay) || 
-                                (commitDay.isAfter(fromDay) && commitDay.isBefore(toDay)));
-                    });
-                    
-                    console.log(`[Report Pilot] Found ${filteredCommits.length} commits after client-side filtering`);
-                    return filteredCommits;
+                        // Filter commits by date client-side
+                        const filteredCommits = allCommits.filter(commit => {
+                            const commitDay = dayjs(commit.date).startOf('day');
+                            const fromDay = dayjs(dateRange.from).startOf('day');
+                            const toDay = dayjs(dateRange.to).startOf('day');
+                            
+                            return (commitDay.isSame(fromDay) || commitDay.isSame(toDay) || 
+                                    (commitDay.isAfter(fromDay) && commitDay.isBefore(toDay)));
+                        });
+                        
+                        console.log(`[Report Pilot] Found ${filteredCommits.length} commits after client-side filtering`);
+                        
+                        // Debug the first few commits to check message content
+                        filteredCommits.slice(0, 3).forEach((commit, i) => {
+                            console.log(`[Report Pilot] Filtered commit ${i}: hash=${commit.hash}, message="${commit.message}"`);
+                        });
+                        
+                        return filteredCommits;
+                    }
                 }
+                
+                return [];
             }
+            
+            // Map the commit data to our CommitInfo format
+            const commits = result.all.map(commit => ({
+                hash: commit.hash,
+                message: commit.message || '[No message]',
+                author: commit.author_name || 'Unknown',
+                date: new Date(commit.date),
+                files: []
+            }));
+            
+            // Debug the first few commits to check message content
+            commits.slice(0, 3).forEach((commit, i) => {
+                console.log(`[Report Pilot] Commit ${i}: hash=${commit.hash}, message="${commit.message}"`);
+            });
             
             return commits;
         } catch (error) {
@@ -158,6 +188,44 @@ export async function getCommitsByDateRange(
         }
     } catch (error) {
         console.error('[Report Pilot] Error in getCommitsByDateRange:', error);
+        vscode.window.showErrorMessage(`Failed to get commits: ${error}`);
+        return [];
+    }
+}
+
+/**
+ * Get all recent commits regardless of date
+ * This function is used for the "All Recent Commits" option
+ */
+export async function getAllRecentCommits(limit: number = 50): Promise<CommitInfo[]> {
+    try {
+        const git = getGit();
+        if (!git) {
+            vscode.window.showInformationMessage('Could not initialize Git. Please check if this is a valid Git repository.');
+            return [];
+        }
+
+        console.log(`[Report Pilot] Fetching all recent commits, limit: ${limit}`);
+        
+        // Get all commits with a simple limit - use the same format as other functions
+        const options: string[] = [
+            '-n', limit.toString(),
+            '--all', // Include all branches
+            '--date=iso',
+            '--pretty=format:{"hash":"%h","author":"%an <%ae>","date":"%ad","message":"%s"}'
+        ];
+        
+        try {
+            const result = await git.log(options);
+            const commits = parseGitLog(result);
+            console.log(`[Report Pilot] Found ${commits.length} recent commits`);
+            return commits;
+        } catch (error) {
+            console.error('[Report Pilot] Error executing git log:', error);
+            throw error;
+        }
+    } catch (error) {
+        console.error('[Report Pilot] Error in getAllRecentCommits:', error);
         vscode.window.showErrorMessage(`Failed to get commits: ${error}`);
         return [];
     }
@@ -200,16 +268,20 @@ export async function getTodaysCommits(author?: string): Promise<CommitInfo[]> {
 /**
  * Parse git log output into structured commit information
  */
-function parseGitLog(logResult: LogResult): CommitInfo[] {
+export function parseGitLog(logResult: LogResult): CommitInfo[] {
     const commits: CommitInfo[] = [];
     
     if (logResult && logResult.all && logResult.all.length > 0) {
         console.log(`[Report Pilot] Parsing ${logResult.all.length} log entries`);
         
+        // Debugging: Check the structure of the first commit object
+        const sampleCommit = logResult.all[0];
+        console.log('[Report Pilot] Sample commit structure:', JSON.stringify(sampleCommit, null, 2));
+        
         for (const commit of logResult.all) {
             try {
-                // Debug the date format
-                console.log(`[Report Pilot] Raw date value: ${commit.date}`);
+                // Debug the complete commit data
+                console.log(`[Report Pilot] Processing commit: ${JSON.stringify(commit, null, 2)}`);
                 
                 // Ensure date is properly parsed using dayjs
                 let commitDate;
@@ -226,9 +298,42 @@ function parseGitLog(logResult: LogResult): CommitInfo[] {
                     commitDate = new Date(); // Default to current date
                 }
                 
+                // Try to parse raw JSON data if the message might be in JSON format
+                try {
+                    // If we have valid JSON data from a custom format in the git log command
+                    if (typeof commit.body === 'string' && commit.body.trim().startsWith('{') && commit.body.includes('"message"')) {
+                        console.log('[Report Pilot] Attempting to parse JSON from commit body');
+                        const jsonData = JSON.parse(commit.body);
+                        
+                        commits.push({
+                            hash: jsonData.hash || commit.hash,
+                            message: jsonData.message || '[No message]',
+                            author: jsonData.author || commit.author_name || 'Unknown',
+                            date: commitDate,
+                            files: []
+                        });
+                        
+                        console.log(`[Report Pilot] Successfully parsed JSON commit: ${jsonData.message}`);
+                        continue; // Skip the standard parsing below
+                    }
+                } catch (jsonError) {
+                    console.error('[Report Pilot] Failed to parse potential JSON data:', jsonError);
+                    // Continue with standard parsing approach
+                }
+                
+                // Try multiple properties where the message could be stored
+                // TypeScript-safe property access
+                const message = 
+                    commit.message || 
+                    (commit as any).subject || // Use type assertion for potential properties
+                    commit.body || 
+                    '[No message]';
+                
+                console.log(`[Report Pilot] Final message value: "${message}"`);
+                
                 commits.push({
-                    hash: commit.hash,
-                    message: commit.message || '[No message]',
+                    hash: commit.hash || '[No hash]',
+                    message: message,
                     author: commit.author_name || 'Unknown',
                     date: commitDate,
                     files: []
